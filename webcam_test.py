@@ -1,8 +1,9 @@
 import numpy as np
 import cv2
+from eye_state_predictor import predict_eye_state
 
-face_cascade = cv2.CascadeClassifier("haarcascade_frontalface_default.xml")
-eye_cascade = cv2.CascadeClassifier("haarcascade_eye.xml")
+face_cascade = cv2.CascadeClassifier("haarcascades/haarcascade_frontalface_default.xml")
+eye_cascade = cv2.CascadeClassifier("haarcascades/haarcascade_eye.xml")
 cap = cv2.VideoCapture(0)
 
 while True:
@@ -22,9 +23,10 @@ while True:
 
         for (ex, ey, ew, eh) in eyes:
             cv2.rectangle(roi_colour, (ex, ey), (ex + ew, ey + eh), (0, 255, 0), 2)
-
-    # blurred = cv2.GaussianBlur(frame, (5, 5), 0)
-    # edges = cv2.Canny(blurred, 30, 100)
+            eye_img = roi_gray[ey:ey+eh, ex:ex+ew]
+            eye_state = predict_eye_state(eye_img)
+            label = "Open" if eye_state == 1 else "Closed"
+            cv2.putText(roi_colour, label, (ex, ey - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
 
     cv2.imshow("frame", frame)
 
