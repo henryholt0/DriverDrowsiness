@@ -24,10 +24,10 @@ model.compile(loss='binary_crossentropy',
               optimizer='adam',
               metrics=['accuracy'])
 
-# Load dataset
-train_data_dir = 'dataset/train'
-validation_data_dir = 'dataset/val'
-test_data_dir = 'dataset/test'
+# Load dataset (folder names in this repo are under eye_dataset/)
+train_data_dir = 'eye_dataset/train'
+validation_data_dir = 'eye_dataset/val'
+test_data_dir = 'eye_dataset/test'
 batch_size = 32
 
 train_datagen = ImageDataGenerator(rescale=1.0/255)
@@ -65,5 +65,5 @@ model.fit(
     validation_steps=validation_generator.samples // batch_size
 )
 
-# Save trained model
-model.save("eye_state_model.h5")
+# Save trained model (predictor expects this filename)
+model.save("eye_state_cnn.h5")

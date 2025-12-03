@@ -23,7 +23,7 @@ while True:
 
         for (ex, ey, ew, eh) in eyes:
             cv2.rectangle(roi_colour, (ex, ey), (ex + ew, ey + eh), (0, 255, 0), 2)
-            eye_img = roi_gray[ey:ey+eh, ex:ex+ew]
+            eye_img = roi_colour[ey:ey+eh, ex:ex+ew]
             eye_state = predict_eye_state(eye_img)
             label = "Open" if eye_state == 1 else "Closed"
             cv2.putText(roi_colour, label, (ex, ey - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
