@@ -1,0 +1,11 @@
+
+# Core scientific packages
+numpy
+opencv-python
+h5py
+pillow
+
+# On macOS Apple Silicon, use tensorflow-macos + tensorflow-metal for hardware acceleration
+# On Intel macOS or Linux/Windows, replace with `tensorflow` instead.
+tensorflow-macos
+tensorflow-metal
