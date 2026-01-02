@@ -22,7 +22,7 @@ mp_face_mesh = mp.solutions.face_mesh
 mp_drawing = mp.solutions.drawing_utils
 
 face_cascade = cv2.CascadeClassifier("haarcascades/haarcascade_frontalface_default.xml")
-VIDEO_SOURCE = "test_clip.mp4"  # Change to 0 for webcam, or provide path to mp4
+VIDEO_SOURCE = "data/test_clip.mp4"  # Change to 0 for webcam, or provide path to mp4
 cap = cv2.VideoCapture(VIDEO_SOURCE)
 
 fps = cap.get(cv2.CAP_PROP_FPS)
