@@ -25,6 +25,16 @@ face_cascade = cv2.CascadeClassifier("haarcascades/haarcascade_frontalface_defau
 VIDEO_SOURCE = "test_clip.mp4"  # Change to 0 for webcam, or provide path to mp4
 cap = cv2.VideoCapture(VIDEO_SOURCE)
 
+fps = cap.get(cv2.CAP_PROP_FPS)
+if fps == 0 or fps is None:
+    fps = 30  # fallback if FPS cannot be read
+
+TIRED_THRESHOLD_SECONDS = 1.5
+CLOSED_FRAMES_THRESHOLD = int(fps * TIRED_THRESHOLD_SECONDS)
+
+left_eye_closed_frames = 0
+right_eye_closed_frames = 0
+
 if not cap.isOpened():
     print(f"⚠️ Could not open video source: {VIDEO_SOURCE}")
     exit()
@@ -53,7 +63,14 @@ while True:
             if left_eye_img.size != 0:
                 eye_state = predict_eye_state(left_eye_img)
                 label = "Open" if eye_state == 1 else "Closed"
-                cv2.putText(frame, f"Left: {label}", (x_min, y_min - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
+
+                if eye_state == 0:
+                    left_eye_closed_frames += 1
+                else:
+                    left_eye_closed_frames = 0
+
+                cv2.putText(frame, f"Left: {label}", (x_min, y_min - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
                 cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 1)
 
             # Right eye landmarks (around eye region)
@@ -66,8 +83,20 @@ while True:
             if right_eye_img.size != 0:
                 eye_state = predict_eye_state(right_eye_img)
                 label = "Open" if eye_state == 1 else "Closed"
-                cv2.putText(frame, f"Right: {label}", (x_min, y_min - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
+
+                if eye_state == 0:
+                    right_eye_closed_frames += 1
+                else:
+                    right_eye_closed_frames = 0
+
+                cv2.putText(frame, f"Right: {label}", (x_min, y_min - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
                 cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 1)
+
+    if (left_eye_closed_frames >= CLOSED_FRAMES_THRESHOLD and
+            right_eye_closed_frames >= CLOSED_FRAMES_THRESHOLD):
+        cv2.putText(frame, "TIRED", (40, 100),
+                    cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 4)
 
     cv2.imshow("frame", frame)
     if cv2.waitKey(1) & 0xFF == ord('q'):
