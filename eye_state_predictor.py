@@ -15,17 +15,9 @@ model = load_model(MODEL_PATH)
 
 
 def _prepare_eye_input(eye_img):
-    """
-    Ensure the eye image is in the shape and scale expected by the model:
-    - RGB channels
-    - 90x90 resolution
-    - float32 values in [0, 1]
-    Returns an array shaped (1, 90, 90, 3).
-    """
     if eye_img is None or eye_img.size == 0:
         raise ValueError("Empty eye image provided to predictor.")
 
-    # Convert grayscale/single-channel images to RGB; convert BGR to RGB for consistency
     if len(eye_img.shape) == 2 or eye_img.shape[2] == 1:
         eye_rgb = cv2.cvtColor(eye_img, cv2.COLOR_GRAY2RGB)
     else:
@@ -35,18 +27,50 @@ def _prepare_eye_input(eye_img):
     eye_normalized = (eye_resized / 255.0).astype("float32")
     return np.expand_dims(eye_normalized, axis=0)
 
+
 def predict_eye_state(eye_img):
     eye_input = _prepare_eye_input(eye_img)
     prediction = model.predict(eye_input)
     prob_open = float(prediction[0][0])
     return int(prob_open >= 0.5)
 
+
 if __name__ == "__main__":
-    # Load and test on a single image
-    test_img_path = "test_eye.png"  # put a sample eye image in your folder
-    if os.path.exists(test_img_path):
-        test_img = cv2.imread(test_img_path)
-        result = predict_eye_state(test_img)
-        print("Prediction:", "Open" if result == 1 else "Closed")
-    else:
-        print("No test_eye.png found")
+    face_cascade = cv2.CascadeClassifier("haarcascades/haarcascade_frontalface_default.xml")
+    eye_cascade = cv2.CascadeClassifier("haarcascades/haarcascade_eye.xml")
+    cap = cv2.VideoCapture(0)
+
+    print("Press 'q' to quit.")
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        faces = face_cascade.detectMultiScale(gray, 1.3, 5)
+
+        for (x, y, w, h) in faces:
+            cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 0, 0), 2)
+            roi_gray = gray[y:y + h, x:x + w]
+            roi_colour = frame[y:y + h, x:x + w]
+
+            eyes = eye_cascade.detectMultiScale(roi_gray, 1.3, 5)
+
+            for (ex, ey, ew, eh) in eyes:
+                cv2.rectangle(roi_colour, (ex, ey), (ex + ew, ey + eh), (0, 255, 0), 2)
+                eye_img = roi_colour[ey:ey + eh, ex:ex + ew]
+                try:
+                    eye_state = predict_eye_state(eye_img)
+                    label = "Open" if eye_state == 1 else "Closed"
+                    cv2.putText(roi_colour, label, (ex, ey - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+                except Exception as e:
+                    print(f"Prediction error: {e}")
+
+        cv2.imshow("Eye State Detection", frame)
+
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    cap.release()
+    cv2.destroyAllWindows()
