@@ -22,7 +22,12 @@ mp_face_mesh = mp.solutions.face_mesh
 mp_drawing = mp.solutions.drawing_utils
 
 face_cascade = cv2.CascadeClassifier("haarcascades/haarcascade_frontalface_default.xml")
-cap = cv2.VideoCapture(0)
+VIDEO_SOURCE = "test_clip.mp4"  # Change to 0 for webcam, or provide path to mp4
+cap = cv2.VideoCapture(VIDEO_SOURCE)
+
+if not cap.isOpened():
+    print(f"⚠️ Could not open video source: {VIDEO_SOURCE}")
+    exit()
 
 face_mesh = mp_face_mesh.FaceMesh(static_image_mode=False, max_num_faces=1, refine_landmarks=True)
 

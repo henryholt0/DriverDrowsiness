@@ -67,5 +67,3 @@ model.fit(
 
 # Save trained model (predictor expects this filename)
 model.save("eye_state_cnn.h5")
-
-#
