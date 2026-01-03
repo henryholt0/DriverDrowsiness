@@ -100,6 +100,22 @@ while True:
     cv2.putText(frame, f"PERCLOS: {perclos:.2f} - {status}", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.7,
                 (0, 0, 255) if status == "TIRED" else (0, 255, 0), 2)
 
+    # Microsleep detection logic
+    MICROSLEEP_THRESHOLD = 5  # adjust as needed
+    if 'consecutive_closed_frames' not in locals():
+        consecutive_closed_frames = 0
+
+    # Use eyes_closed from above if available, else default to False
+    eyes_closed_var = locals().get("eyes_closed", 0)
+    if eyes_closed_var:
+        consecutive_closed_frames += 1
+    else:
+        consecutive_closed_frames = 0
+
+    if consecutive_closed_frames >= MICROSLEEP_THRESHOLD:
+        cv2.putText(frame, "MICROSLEEP DETECTED!", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7,
+                    (0, 0, 255), 2)
+
     cv2.imshow("PERCLOS Tracker", frame)
     if cv2.waitKey(1) & 0xFF == ord("q"):
         break
