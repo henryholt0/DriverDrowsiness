@@ -15,6 +15,7 @@ __pycache__/
 .vscode/
 /.idea/
 eye_dataset/
+head_tilt_dataset/
 .ipynb_checkpoints/
 *.egg-info/
 eye_dataset/
