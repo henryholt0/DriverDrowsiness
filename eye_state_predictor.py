@@ -13,7 +13,6 @@ if not os.path.exists(MODEL_PATH):
 # Load the trained CNN model
 model = load_model(MODEL_PATH)
 
-
 def _prepare_eye_input(eye_img):
     if eye_img is None or eye_img.size == 0:
         raise ValueError("Empty eye image provided to predictor.")

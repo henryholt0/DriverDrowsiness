@@ -61,14 +61,12 @@ while cap.isOpened():
         # Draw eye boxes and labels
         if left_box:
             color = (0, 255, 0) if left_state else (0, 0, 255)
-            cv2.rectangle(frame, (left_box[0], left_box[1]), (left_box[2], left_box[3]), color, 2)
             cv2.putText(frame, f"Left: {'Open' if left_state else 'Closed'}", (left_box[0], left_box[1] - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
         if right_box:
             color = (0, 255, 0) if right_state else (0, 0, 255)
-            cv2.rectangle(frame, (right_box[0], right_box[1]), (right_box[2], right_box[3]), color, 2)
             cv2.putText(frame, f"Right: {'Open' if right_state else 'Closed'}", (right_box[0], right_box[1] - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
 
         # TIRED BASIC
         if left_state == 0:
@@ -94,7 +92,7 @@ while cap.isOpened():
         if perclos > 0.4:
             tired_perclos = True
         color = (0, 0, 255) if tired_perclos else (0, 255, 0)
-        cv2.putText(frame, f"PERCLOS: {perclos:.2f}", (30, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+        cv2.putText(frame, f"PERCLOS: {perclos:.2f}", (30, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 1)
 
         # MICROSLEEP
         if both_closed:
@@ -109,7 +107,7 @@ while cap.isOpened():
         p1 = (int(face_landmarks.landmark[33].x * w), int(face_landmarks.landmark[33].y * h))
         p2 = (int(face_landmarks.landmark[263].x * w), int(face_landmarks.landmark[263].y * h))
         tilt_angle = np.degrees(np.arctan2(p2[1] - p1[1], p2[0] - p1[0]))
-        cv2.putText(frame, f"Tilt: {tilt_angle:.1f} deg", (30, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
+        cv2.putText(frame, f"Tilt: {tilt_angle:.1f} deg", (30, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 1)
         if abs(tilt_angle) > TILT_THRESHOLD_DEGREES:
             tired_tilt = True
             cv2.putText(frame, "HEAD TILT DETECTED", (30, 210), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
