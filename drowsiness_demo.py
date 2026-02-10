@@ -7,10 +7,14 @@ VIDEO_SOURCE = "data/test_clip_car.mp4"
 TIRED_THRESHOLD_SECONDS = 1.5
 MICROSLEEP_THRESHOLD = 5  # consecutive frames
 TILT_THRESHOLD_DEGREES = 15
+EYE_EAR_CLOSED_THRESH = 0.19
+EYE_EAR_MIN_WIDTH = 8
 
 # Eye landmark indices
 LEFT_EYE_IDX = [33, 133, 160, 159, 158, 157, 173, 144, 145, 153]
 RIGHT_EYE_IDX = [362, 263, 387, 386, 385, 384, 398, 373, 374, 380]
+LEFT_EYE_EAR_IDX = (33, 133, 159, 145, 158, 153)
+RIGHT_EYE_EAR_IDX = (362, 263, 386, 374, 385, 380)
 
 # Init mediapipe
 mp_face_mesh = mp.solutions.face_mesh
@@ -44,6 +48,15 @@ while cap.isOpened():
         face_landmarks = results.multi_face_landmarks[0]
 
         # Eye state detection
+        def compute_ear(indices):
+            pts = [np.array([face_landmarks.landmark[i].x * w, face_landmarks.landmark[i].y * h]) for i in indices]
+            p1, p4, p2, p6, p3, p5 = pts
+            width = np.linalg.norm(p1 - p4)
+            if width < EYE_EAR_MIN_WIDTH:
+                return None
+            ear = (np.linalg.norm(p2 - p6) + np.linalg.norm(p3 - p5)) / (2.0 * width)
+            return float(ear)
+
         def extract_eye_state(indices):
             pts = [(int(face_landmarks.landmark[i].x * w), int(face_landmarks.landmark[i].y * h)) for i in indices]
             x_coords, y_coords = zip(*pts)
@@ -57,6 +70,13 @@ while cap.isOpened():
 
         left_state, left_box = extract_eye_state(LEFT_EYE_IDX)
         right_state, right_box = extract_eye_state(RIGHT_EYE_IDX)
+
+        left_ear = compute_ear(LEFT_EYE_EAR_IDX)
+        right_ear = compute_ear(RIGHT_EYE_EAR_IDX)
+        if left_ear is not None and left_ear < EYE_EAR_CLOSED_THRESH:
+            left_state = 0
+        if right_ear is not None and right_ear < EYE_EAR_CLOSED_THRESH:
+            right_state = 0
 
         # Draw eye boxes and labels
         if left_box:
