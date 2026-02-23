@@ -26,7 +26,6 @@ def _prepare_eye_input(eye_img):
     eye_normalized = (eye_resized / 255.0).astype("float32")
     return np.expand_dims(eye_normalized, axis=0)
 
-
 def predict_eye_state(eye_img):
     eye_input = _prepare_eye_input(eye_img)
     prediction = model.predict(eye_input)
