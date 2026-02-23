@@ -3,7 +3,8 @@ import cv2
 from eye_state_predictor import predict_eye_state
 import mediapipe as mp
 
-VIDEO_SOURCE = "data/test_clip_car_1.mp4"
+VIDEO_SOURCE = "data/test_clip_car_5.mp4"
+PROCESS_SCALE = 1.0  # < 1.0 to speed up processing; 1.0 keeps full resolution
 TIRED_THRESHOLD_SECONDS = 1.5
 MICROSLEEP_THRESHOLD = 5 # consecutive frames
 TILT_THRESHOLD_DEGREES = 15
@@ -38,6 +39,9 @@ while cap.isOpened():
     if not ret:
         break
 
+    if PROCESS_SCALE != 1.0:
+        frame = cv2.resize(frame, None, fx=PROCESS_SCALE, fy=PROCESS_SCALE, interpolation=cv2.INTER_AREA)
+
     h, w, _ = frame.shape
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     results = face_mesh.process(rgb_frame)
@@ -45,6 +49,7 @@ while cap.isOpened():
     tired_basic = False
     tired_perclos = False
     tired_tilt = False
+    ui_scale = max(0.6, w / 1280.0)
 
     if results.multi_face_landmarks:
         face_landmarks = results.multi_face_landmarks[0]
@@ -95,8 +100,8 @@ while cap.isOpened():
             else:
                 color = (0, 255, 0) if left_state else (0, 0, 255)
                 label = f"Left: {'Open' if left_state else 'Closed'}"
-            cv2.putText(frame, label, (left_box[0], left_box[1] - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+            cv2.putText(frame, label, (left_box[0], left_box[1] - int(10 * ui_scale)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5 * ui_scale, color, max(1, int(1 * ui_scale)))
         if right_box:
             if not right_visible:
                 color = (0, 255, 255)
@@ -104,8 +109,8 @@ while cap.isOpened():
             else:
                 color = (0, 255, 0) if right_state else (0, 0, 255)
                 label = f"Right: {'Open' if right_state else 'Closed'}"
-            cv2.putText(frame, label, (right_box[0], right_box[1] - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+            cv2.putText(frame, label, (right_box[0], right_box[1] - int(10 * ui_scale)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5 * ui_scale, color, max(1, int(1 * ui_scale)))
 
         if left_visible and right_visible:
             # TIRED BASIC
@@ -121,7 +126,8 @@ while cap.isOpened():
             if (left_eye_closed_frames >= CLOSED_FRAMES_THRESHOLD and
                     right_eye_closed_frames >= CLOSED_FRAMES_THRESHOLD):
                 tired_basic = True
-                cv2.putText(frame, "TIRED (Closed Eyes)", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                cv2.putText(frame, "TIRED (Closed Eyes)", (30, int(50 * ui_scale)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7 * ui_scale, (0, 0, 255), max(2, int(2 * ui_scale)))
 
             # PERCLOS
             both_closed = int(left_state == 0 and right_state == 0)
@@ -132,7 +138,8 @@ while cap.isOpened():
             if perclos > 0.4:
                 tired_perclos = True
             color = (0, 0, 255) if tired_perclos else (0, 255, 0)
-            cv2.putText(frame, f"PERCLOS: {perclos:.2f}", (30, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 1)
+            cv2.putText(frame, f"PERCLOS: {perclos:.2f}", (30, int(90 * ui_scale)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7 * ui_scale, color, max(1, int(1 * ui_scale)))
 
             # MICROSLEEP
             if both_closed:
@@ -141,7 +148,14 @@ while cap.isOpened():
                 consecutive_closed_frames = 0
 
             if consecutive_closed_frames >= MICROSLEEP_THRESHOLD:
-                cv2.putText(frame, "MICROSLEEP DETECTED", (30, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                text = "MICROSLEEP DETECTED"
+                font = cv2.FONT_HERSHEY_SIMPLEX
+                scale = 0.9 * ui_scale
+                thickness = max(2, int(2 * ui_scale))
+                (tw, th), _ = cv2.getTextSize(text, font, scale, thickness)
+                x = max(0, (w - tw) // 2)
+                y = max(th + 10, (h + th) // 2)
+                cv2.putText(frame, text, (x, y), font, scale, (0, 0, 255), thickness)
         else:
             left_eye_closed_frames = 0
             right_eye_closed_frames = 0
@@ -151,10 +165,12 @@ while cap.isOpened():
         p1 = (int(face_landmarks.landmark[33].x * w), int(face_landmarks.landmark[33].y * h))
         p2 = (int(face_landmarks.landmark[263].x * w), int(face_landmarks.landmark[263].y * h))
         tilt_angle = np.degrees(np.arctan2(p2[1] - p1[1], p2[0] - p1[0]))
-        cv2.putText(frame, f"Tilt: {tilt_angle:.1f} deg", (30, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 1)
+        cv2.putText(frame, f"Tilt: {tilt_angle:.1f} deg", (30, int(170 * ui_scale)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7 * ui_scale, (255, 255, 0), max(1, int(1 * ui_scale)))
         if abs(tilt_angle) > TILT_THRESHOLD_DEGREES:
             tired_tilt = True
-            cv2.putText(frame, "HEAD TILT DETECTED", (30, 210), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+            cv2.putText(frame, "HEAD TILT DETECTED", (30, int(210 * ui_scale)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7 * ui_scale, (0, 0, 255), max(2, int(2 * ui_scale)))
 
     cv2.imshow("Driver Drowsiness Demo", frame)
     if cv2.waitKey(1) & 0xFF == ord('q'):
