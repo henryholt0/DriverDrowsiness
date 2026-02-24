@@ -1,180 +1,188 @@
-import numpy as np
 import cv2
-from eye_state_predictor import predict_eye_state
 import mediapipe as mp
+import numpy as np
 
-VIDEO_SOURCE = "data/test_clip_car_5.mp4"
-PROCESS_SCALE = 1.0  # < 1.0 to speed up processing; 1.0 keeps full resolution
-TIRED_THRESHOLD_SECONDS = 1.5
-MICROSLEEP_THRESHOLD = 5 # consecutive frames
-TILT_THRESHOLD_DEGREES = 15
-EYE_EAR_CLOSED_THRESH = 0.19
-EYE_EAR_MIN_WIDTH = 8
-EYE_BOX_MIN = 12
-EYE_BOX_MARGIN = 5
+import config
+from eye_state_predictor import predict_eye_state
+from eye_utils import compute_ear, extract_eye_state
+from overlay_utils import draw_eye_label, draw_center_text, draw_scaled_text, ui_scale_for_width
+from drowsiness_logic import update_eye_counters, update_microsleep, update_perclos
 
-# Eye landmark indices
-LEFT_EYE_IDX = [33, 133, 160, 159, 158, 157, 173, 144, 145, 153]
-RIGHT_EYE_IDX = [362, 263, 387, 386, 385, 384, 398, 373, 374, 380]
-LEFT_EYE_EAR_IDX = (33, 133, 159, 145, 158, 153)
-RIGHT_EYE_EAR_IDX = (362, 263, 386, 374, 385, 380)
 
-# Init mediapipe
-mp_face_mesh = mp.solutions.face_mesh
-face_mesh = mp_face_mesh.FaceMesh(static_image_mode=False, max_num_faces=1, refine_landmarks=True)
+def scale_frame(frame):
+    if config.PROCESS_SCALE == 1.0:
+        return frame
+    return cv2.resize(frame, None, fx=config.PROCESS_SCALE, fy=config.PROCESS_SCALE, interpolation=cv2.INTER_AREA)
 
-cap = cv2.VideoCapture(VIDEO_SOURCE)
-fps = cap.get(cv2.CAP_PROP_FPS)
-CLOSED_FRAMES_THRESHOLD = int(fps * TIRED_THRESHOLD_SECONDS)
-FRAME_WINDOW = int(fps * 5)
 
-left_eye_closed_frames = 0
-right_eye_closed_frames = 0
-consecutive_closed_frames = 0
+def init_face_mesh():
+    mp_face_mesh = mp.solutions.face_mesh
+    return mp_face_mesh.FaceMesh(static_image_mode=False, max_num_faces=1, refine_landmarks=True)
 
-eye_state_history = []
 
-while cap.isOpened():
-    ret, frame = cap.read()
-    if not ret:
-        break
+def main():
+    face_mesh = init_face_mesh()
+    cap = cv2.VideoCapture(config.VIDEO_SOURCE)
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30
+    closed_frames_threshold = int(fps * config.TIRED_THRESHOLD_SECONDS)
+    frame_window = int(fps * config.FRAME_WINDOW_SECONDS)
 
-    if PROCESS_SCALE != 1.0:
-        frame = cv2.resize(frame, None, fx=PROCESS_SCALE, fy=PROCESS_SCALE, interpolation=cv2.INTER_AREA)
+    left_eye_closed_frames = 0
+    right_eye_closed_frames = 0
+    consecutive_closed_frames = 0
+    eye_state_history = []
 
-    h, w, _ = frame.shape
-    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    results = face_mesh.process(rgb_frame)
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
 
-    tired_basic = False
-    tired_perclos = False
-    tired_tilt = False
-    ui_scale = max(0.6, w / 1280.0)
+        frame = scale_frame(frame)
+        h, w = frame.shape[:2]
+        ui_scale = ui_scale_for_width(w)
 
-    if results.multi_face_landmarks:
-        face_landmarks = results.multi_face_landmarks[0]
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        results = face_mesh.process(rgb_frame)
 
-        # Eye state detection
-        def compute_ear(indices):
-            pts = [np.array([face_landmarks.landmark[i].x * w, face_landmarks.landmark[i].y * h]) for i in indices]
-            p1, p4, p2, p6, p3, p5 = pts
-            width = np.linalg.norm(p1 - p4)
-            if width < EYE_EAR_MIN_WIDTH:
-                return None
-            ear = (np.linalg.norm(p2 - p6) + np.linalg.norm(p3 - p5)) / (2.0 * width)
-            return float(ear)
+        tired_basic = False
+        tired_perclos = False
+        tired_tilt = False
 
-        def extract_eye_state(indices):
-            pts = [(int(face_landmarks.landmark[i].x * w), int(face_landmarks.landmark[i].y * h)) for i in indices]
-            x, y, bw, bh = cv2.boundingRect(np.array(pts))
-            x1 = max(x - EYE_BOX_MARGIN, 0)
-            y1 = max(y - EYE_BOX_MARGIN, 0)
-            x2 = min(x + bw + EYE_BOX_MARGIN, w)
-            y2 = min(y + bh + EYE_BOX_MARGIN, h)
-            if (x2 - x1) < EYE_BOX_MIN or (y2 - y1) < EYE_BOX_MIN:
-                return None, (x1, y1, x2, y2), False
-            eye_img = frame[y1:y2, x1:x2]
-            if eye_img.size == 0:
-                return None, (x1, y1, x2, y2), False
-            state = predict_eye_state(eye_img)
-            return state, (x1, y1, x2, y2), True
+        if results.multi_face_landmarks:
+            face_landmarks = results.multi_face_landmarks[0]
 
-        left_state, left_box, left_ok = extract_eye_state(LEFT_EYE_IDX)
-        right_state, right_box, right_ok = extract_eye_state(RIGHT_EYE_IDX)
+            left_state, left_box, left_ok = extract_eye_state(
+                frame,
+                face_landmarks,
+                config.LEFT_EYE_IDX,
+                w,
+                h,
+                config.EYE_BOX_MIN,
+                config.EYE_BOX_MARGIN,
+                predict_eye_state,
+            )
+            right_state, right_box, right_ok = extract_eye_state(
+                frame,
+                face_landmarks,
+                config.RIGHT_EYE_IDX,
+                w,
+                h,
+                config.EYE_BOX_MIN,
+                config.EYE_BOX_MARGIN,
+                predict_eye_state,
+            )
 
-        left_ear = compute_ear(LEFT_EYE_EAR_IDX)
-        right_ear = compute_ear(RIGHT_EYE_EAR_IDX)
-        left_visible = left_ok and left_ear is not None
-        right_visible = right_ok and right_ear is not None
+            left_ear = compute_ear(face_landmarks, config.LEFT_EYE_EAR_IDX, w, h, config.EYE_EAR_MIN_WIDTH)
+            right_ear = compute_ear(face_landmarks, config.RIGHT_EYE_EAR_IDX, w, h, config.EYE_EAR_MIN_WIDTH)
 
-        if left_visible and left_ear < EYE_EAR_CLOSED_THRESH:
-            left_state = 0
-        if right_visible and right_ear < EYE_EAR_CLOSED_THRESH:
-            right_state = 0
+            left_visible = left_ok and left_ear is not None
+            right_visible = right_ok and right_ear is not None
 
-        # Draw eye boxes and labels
-        if left_box:
-            if not left_visible:
-                color = (0, 255, 255)
-                label = "Left: Away"
-            else:
-                color = (0, 255, 0) if left_state else (0, 0, 255)
-                label = f"Left: {'Open' if left_state else 'Closed'}"
-            cv2.putText(frame, label, (left_box[0], left_box[1] - int(10 * ui_scale)),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5 * ui_scale, color, max(1, int(1 * ui_scale)))
-        if right_box:
-            if not right_visible:
-                color = (0, 255, 255)
-                label = "Right: Away"
-            else:
-                color = (0, 255, 0) if right_state else (0, 0, 255)
-                label = f"Right: {'Open' if right_state else 'Closed'}"
-            cv2.putText(frame, label, (right_box[0], right_box[1] - int(10 * ui_scale)),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5 * ui_scale, color, max(1, int(1 * ui_scale)))
+            if left_visible and left_ear < config.EYE_EAR_CLOSED_THRESH:
+                left_state = 0
+            if right_visible and right_ear < config.EYE_EAR_CLOSED_THRESH:
+                right_state = 0
 
-        if left_visible and right_visible:
-            # TIRED BASIC
-            if left_state == 0:
-                left_eye_closed_frames += 1
+            if left_box:
+                if not left_visible:
+                    draw_eye_label(frame, left_box, "Left: Away", (0, 255, 255), ui_scale)
+                else:
+                    color = (0, 255, 0) if left_state else (0, 0, 255)
+                    draw_eye_label(
+                        frame,
+                        left_box,
+                        f"Left: {'Open' if left_state else 'Closed'}",
+                        color,
+                        ui_scale,
+                    )
+
+            if right_box:
+                if not right_visible:
+                    draw_eye_label(frame, right_box, "Right: Away", (0, 255, 255), ui_scale)
+                else:
+                    color = (0, 255, 0) if right_state else (0, 0, 255)
+                    draw_eye_label(
+                        frame,
+                        right_box,
+                        f"Right: {'Open' if right_state else 'Closed'}",
+                        color,
+                        ui_scale,
+                    )
+
+            if left_visible and right_visible:
+                left_eye_closed_frames, right_eye_closed_frames = update_eye_counters(
+                    left_state, right_state, left_eye_closed_frames, right_eye_closed_frames
+                )
+
+                if (
+                    left_eye_closed_frames >= closed_frames_threshold
+                    and right_eye_closed_frames >= closed_frames_threshold
+                ):
+                    tired_basic = True
+                    draw_scaled_text(
+                        frame,
+                        "TIRED (Closed Eyes)",
+                        (30, int(50 * ui_scale)),
+                        (0, 0, 255),
+                        ui_scale,
+                    )
+
+                both_closed = int(left_state == 0 and right_state == 0)
+                perclos = update_perclos(eye_state_history, both_closed, frame_window)
+                if perclos > 0.4:
+                    tired_perclos = True
+                color = (0, 0, 255) if tired_perclos else (0, 255, 0)
+                draw_scaled_text(
+                    frame,
+                    f"PERCLOS: {perclos:.2f}",
+                    (30, int(90 * ui_scale)),
+                    color,
+                    ui_scale,
+                    base_thickness=1,
+                )
+
+                consecutive_closed_frames = update_microsleep(consecutive_closed_frames, both_closed)
+                if consecutive_closed_frames >= config.MICROSLEEP_THRESHOLD:
+                    draw_center_text(frame, "MICROSLEEP DETECTED", (0, 0, 255), ui_scale)
             else:
                 left_eye_closed_frames = 0
-            if right_state == 0:
-                right_eye_closed_frames += 1
-            else:
                 right_eye_closed_frames = 0
-
-            if (left_eye_closed_frames >= CLOSED_FRAMES_THRESHOLD and
-                    right_eye_closed_frames >= CLOSED_FRAMES_THRESHOLD):
-                tired_basic = True
-                cv2.putText(frame, "TIRED (Closed Eyes)", (30, int(50 * ui_scale)),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7 * ui_scale, (0, 0, 255), max(2, int(2 * ui_scale)))
-
-            # PERCLOS
-            both_closed = int(left_state == 0 and right_state == 0)
-            eye_state_history.append(both_closed)
-            if len(eye_state_history) > FRAME_WINDOW:
-                eye_state_history.pop(0)
-            perclos = sum(eye_state_history) / len(eye_state_history)
-            if perclos > 0.4:
-                tired_perclos = True
-            color = (0, 0, 255) if tired_perclos else (0, 255, 0)
-            cv2.putText(frame, f"PERCLOS: {perclos:.2f}", (30, int(90 * ui_scale)),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7 * ui_scale, color, max(1, int(1 * ui_scale)))
-
-            # MICROSLEEP
-            if both_closed:
-                consecutive_closed_frames += 1
-            else:
                 consecutive_closed_frames = 0
 
-            if consecutive_closed_frames >= MICROSLEEP_THRESHOLD:
-                text = "MICROSLEEP DETECTED"
-                font = cv2.FONT_HERSHEY_SIMPLEX
-                scale = 0.9 * ui_scale
-                thickness = max(2, int(2 * ui_scale))
-                (tw, th), _ = cv2.getTextSize(text, font, scale, thickness)
-                x = max(0, (w - tw) // 2)
-                y = max(th + 10, (h + th) // 2)
-                cv2.putText(frame, text, (x, y), font, scale, (0, 0, 255), thickness)
-        else:
-            left_eye_closed_frames = 0
-            right_eye_closed_frames = 0
-            consecutive_closed_frames = 0
+            p1 = (
+                int(face_landmarks.landmark[33].x * w),
+                int(face_landmarks.landmark[33].y * h),
+            )
+            p2 = (
+                int(face_landmarks.landmark[263].x * w),
+                int(face_landmarks.landmark[263].y * h),
+            )
+            tilt_angle = np.degrees(np.arctan2(p2[1] - p1[1], p2[0] - p1[0]))
+            draw_scaled_text(
+                frame,
+                f"Tilt: {tilt_angle:.1f} deg",
+                (30, int(170 * ui_scale)),
+                (255, 255, 0),
+                ui_scale,
+                base_thickness=1,
+            )
+            if abs(tilt_angle) > config.TILT_THRESHOLD_DEGREES:
+                tired_tilt = True
+                draw_scaled_text(
+                    frame,
+                    "HEAD TILT DETECTED",
+                    (30, int(210 * ui_scale)),
+                    (0, 0, 255),
+                    ui_scale,
+                )
 
-        # HEAD TILT
-        p1 = (int(face_landmarks.landmark[33].x * w), int(face_landmarks.landmark[33].y * h))
-        p2 = (int(face_landmarks.landmark[263].x * w), int(face_landmarks.landmark[263].y * h))
-        tilt_angle = np.degrees(np.arctan2(p2[1] - p1[1], p2[0] - p1[0]))
-        cv2.putText(frame, f"Tilt: {tilt_angle:.1f} deg", (30, int(170 * ui_scale)),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7 * ui_scale, (255, 255, 0), max(1, int(1 * ui_scale)))
-        if abs(tilt_angle) > TILT_THRESHOLD_DEGREES:
-            tired_tilt = True
-            cv2.putText(frame, "HEAD TILT DETECTED", (30, int(210 * ui_scale)),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7 * ui_scale, (0, 0, 255), max(2, int(2 * ui_scale)))
+        cv2.imshow("Driver Drowsiness Demo", frame)
+        if cv2.waitKey(1) & 0xFF == ord("q"):
+            break
 
-    cv2.imshow("Driver Drowsiness Demo", frame)
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
+    cap.release()
+    cv2.destroyAllWindows()
 
-cap.release()
-cv2.destroyAllWindows()
+
+if __name__ == "__main__":
+    main()
